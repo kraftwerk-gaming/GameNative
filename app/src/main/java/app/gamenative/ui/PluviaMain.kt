@@ -1582,6 +1582,8 @@ fun PluviaMain(
                         EpicService.hasStoredCredentials(context) ||
                         AmazonService.hasStoredCredentials(context) ->
                         PluviaScreen.Home.route + "?offline=true"
+                    // an external launch request runs without the user, so don't stop at login
+                    MainActivity.peekPendingLaunchRequest() != null -> PluviaScreen.Home.route + "?offline=true"
                     else -> PluviaScreen.LoginUser.route
                 }
             }
