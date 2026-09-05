@@ -126,6 +126,7 @@ import app.gamenative.ui.data.XServerState
 import app.gamenative.ui.widget.PerformanceHudView
 import app.gamenative.utils.AssetUtils
 import app.gamenative.utils.ContainerUtils
+import app.gamenative.utils.IntentLaunchManager
 import app.gamenative.utils.downloader.CoreDriverDownloader
 import app.gamenative.utils.CustomGameScanner
 import app.gamenative.utils.ExecutableSelectionUtils
@@ -448,7 +449,7 @@ fun XServerScreen(
     }
 
     val container = remember(appId) {
-        ContainerUtils.getOrCreateContainerWithOverride(context, appId)
+        IntentLaunchManager.applyControlsProfile(context, appId, ContainerUtils.getOrCreateContainerWithOverride(context, appId))
     }
     val activity = remember(context) { BrightnessManager.findActivity(context) }
 
