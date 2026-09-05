@@ -258,9 +258,11 @@ object IntentLaunchManager {
         // Quick return if no actual overrides
         if (override == base) return base
 
-        return ContainerData(
+        // Fields the intent does not carry keep the container's stored value
+        return base.copy(
             name = override.name.ifEmpty { base.name },
-            screenSize = if (override.screenSize != base.screenSize) {
+            // absent from the intent means the parser's fill, i.e. the device default
+            screenSize = if (override.screenSize != PluviaApp.getDefaultScreenSize()) {
                 override.screenSize
             } else {
                 base.screenSize
@@ -324,7 +326,6 @@ object IntentLaunchManager {
             enableDInput = if (override.enableDInput != true) override.enableDInput else base.enableDInput,
             dinputMapperType = if (override.dinputMapperType != 1.toByte()) override.dinputMapperType else base.dinputMapperType,
             disableMouseInput = if (override.disableMouseInput != false) override.disableMouseInput else base.disableMouseInput,
-            suspendPolicy = base.suspendPolicy,
             shaderBackend = if (override.shaderBackend != "glsl") override.shaderBackend else base.shaderBackend,
             useGLSL = if (override.useGLSL != "enabled") override.useGLSL else base.useGLSL,
         )
