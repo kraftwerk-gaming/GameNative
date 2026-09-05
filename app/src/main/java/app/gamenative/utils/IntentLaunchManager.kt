@@ -29,6 +29,25 @@ object IntentLaunchManager {
     val ACTION_ADD_CUSTOM_GAME_FOLDER = "${BuildConfig.APPLICATION_ID}.ADD_CUSTOM_GAME_FOLDER"
     private const val MAX_CONFIG_JSON_SIZE = 50000 // 50KB limit to prevent memory exhaustion
 
+    // ADD_CUSTOM_GAME_FOLDER: a profile as .icp JSON; LAUNCH_GAME: its name
+    private const val EXTRA_CONTROLS_PROFILE = "controls_profile"
+
+    private val controlsProfileByApp = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    fun applyControlsProfile(context: Context, appId: String, container: Container): Container {
+        val name = controlsProfileByApp.remove(appId) ?: return container
+        val match = com.winlator.inputcontrols.InputControlsManager(context)
+            .getProfiles(false).firstOrNull { it.name == name }
+        if (match == null) {
+            Timber.w("[IntentLaunchManager]: no controls profile named '$name'")
+        } else if (container.getExtra("profileId", "0") != match.id.toString()) {
+            container.putExtra("profileId", match.id.toString())
+            container.saveData()
+            Timber.i("[IntentLaunchManager]: container uses controls profile '$name' (id ${match.id})")
+        }
+        return container
+    }
+
     data class LaunchRequest(
         val appId: String,
         val containerConfig: ContainerData? = null,
@@ -72,6 +91,10 @@ object IntentLaunchManager {
             null
         }
 
+        intent.getStringExtra(EXTRA_CONTROLS_PROFILE)?.trim()?.takeIf { it.isNotEmpty() }?.let {
+            controlsProfileByApp[appId] = it
+        }
+
         return LaunchRequest(appId, containerConfig)
     }
 
@@ -87,11 +110,44 @@ object IntentLaunchManager {
             return false
         }
 
-        return try {
+        val registered = try {
             CustomGameScanner.registerManualFolder(folder)
         } catch (e: Exception) {
             Timber.e(e, "[IntentLaunchManager]: Failed to register custom game folder $folder")
             false
+        }
+
+        intent.getStringExtra(EXTRA_CONTROLS_PROFILE)?.let { importControlsProfile(context, it) }
+        return registered
+    }
+
+    private fun importControlsProfile(context: Context, json: String) {
+        if (json.length > MAX_CONFIG_JSON_SIZE) {
+            Timber.w("[IntentLaunchManager]: controls profile exceeds ${MAX_CONFIG_JSON_SIZE} bytes, ignoring")
+            return
+        }
+        try {
+            val data = org.json.JSONObject(json)
+            val name = data.optString("name")
+            if (name.isEmpty()) {
+                Timber.w("[IntentLaunchManager]: controls profile has no name, ignoring")
+                return
+            }
+            val manager = com.winlator.inputcontrols.InputControlsManager(context)
+            val profiles = manager.getProfiles(false)
+            if (!data.has("elements") || data.getJSONArray("elements").length() == 0) {
+                profiles.firstOrNull { it.id == 0 }?.let { fallback ->
+                    val file = com.winlator.inputcontrols.ControlsProfile.getProfileFile(context, fallback.id)
+                    val base = org.json.JSONObject(com.winlator.core.FileUtils.readString(file))
+                    data.put("elements", base.optJSONArray("elements") ?: org.json.JSONArray())
+                }
+            }
+            profiles.filter { it.name == name }.forEach { manager.removeProfile(it) }
+            if (!data.has("id")) data.put("id", 0)
+            val imported = manager.importProfile(data)
+            Timber.i("[IntentLaunchManager]: controls profile '$name' imported as id ${imported?.id}")
+        } catch (e: Exception) {
+            Timber.e(e, "[IntentLaunchManager]: Failed to import controls profile")
         }
     }
 
