@@ -448,7 +448,7 @@ fun XServerScreen(
     }
 
     val container = remember(appId) {
-        ContainerUtils.getContainer(context, appId)
+        ContainerUtils.getOrCreateContainerWithOverride(context, appId)
     }
     val activity = remember(context) { BrightnessManager.findActivity(context) }
 
