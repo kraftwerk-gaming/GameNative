@@ -205,8 +205,7 @@ public abstract class ImageFsInstaller {
         }
 
         // ➌  Make sure the new libs are world-readable / executable
-        chmod(new File(imagefs, "usr/lib/libredirect.so"));
-        chmod(new File(imagefs, "usr/lib/libredirect-bionic.so"));
+        chmod(new File(imagefs, "usr/lib/libstromredirect.so"));
 
         ensureBionicLib(ctx, imagefs);
 

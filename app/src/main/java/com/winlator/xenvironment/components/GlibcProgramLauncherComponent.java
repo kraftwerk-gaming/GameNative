@@ -169,6 +169,48 @@ public class GlibcProgramLauncherComponent extends GuestProgramLauncherComponent
         this.workingDir = workingDir;
     }
 
+    /**
+     * The libraries every guest process preloads, and the path map the
+     * redirect shim applies.
+     *
+     * LD_PRELOAD targets the native (ARM64) dynamic linker: box64 is an
+     * ARM64 binary and the x86 code it runs never becomes a separate
+     * process, so only the 64-bit libs in /usr/lib are relevant.
+     *
+     * The imagefs is Winlator's, built with /data/data/com.winlator baked
+     * into libxcb's X socket path, fontconfig, the X11 locale tables and
+     * every RUNPATH. libstromredirect.so (from redirect.tzst; source and
+     * build in the strom repo, pkgs/gamenative-redirect) rewrites those
+     * prefixes to the imagefs this app actually installed, and reads the
+     * map from NIX_REDIRECTS. The map also covers the app.gamenative
+     * prefix so a build with an applicationIdSuffix works too.
+     */
+    private static void putPreloadEnv(EnvVars envVars, ImageFs imageFs) {
+        File glibc64Dir = imageFs.getGlibc64Dir();
+        File sysvshm64 = new File(glibc64Dir, "libandroid-sysvshm.so");
+        File redirect64 = new File(glibc64Dir, "libstromredirect.so");
+
+        String root = imageFs.getRootDir().getPath();
+        envVars.put("NIX_REDIRECTS",
+                "/data/data/com.winlator/files/imagefs=" + root
+                + ":/data/data/com.winlator/files/rootfs=" + root
+                + ":/data/user/0/com.winlator/files/imagefs=" + root
+                + ":/data/data/app.gamenative/files/imagefs=" + root
+                + ":/data/user/0/app.gamenative/files/imagefs=" + root);
+
+        StringBuilder ldPreload = new StringBuilder();
+        if (redirect64.exists()) ldPreload.append(redirect64.getPath());
+        else Log.w("GlibcProgramLauncherComponent", "libstromredirect.so missing from " + glibc64Dir.getPath() + "; baked com.winlator paths will not resolve");
+        if (sysvshm64.exists()) {
+            if (ldPreload.length() > 0) ldPreload.append(" ");
+            ldPreload.append(sysvshm64.getPath());
+        }
+        if (ldPreload.length() > 0) {
+            Log.d("GlibcProgramLauncherComponent", "Setting LD_PRELOAD=" + ldPreload);
+            envVars.put("LD_PRELOAD", ldPreload.toString());
+        }
+    }
+
     private int execGuestProgram() {
         Context context = environment.getContext();
         ImageFs imageFs = ImageFs.find(context);
@@ -198,28 +240,7 @@ public class GlibcProgramLauncherComponent extends GuestProgramLauncherComponent
         envVars.put("ANDROID_SYSVSHM_SERVER", imageFs.getRootDir().getPath() + UnixSocketConfig.SYSVSHM_SERVER_PATH);
         envVars.put("FONTCONFIG_PATH", imageFs.getRootDir().getPath() + "/usr/etc/fonts");
 
-        // LD_PRELOAD targets the native (ARM) dynamic linker. Since box64 is an ARM64 binary,
-        // we must preload ARM64 libs from glibc64Dir (/usr/lib). 32-bit x86 Windows programs
-        // running inside Wine are emulated by box64's WoW64 layer — they don't spawn a separate
-        // ARM32 process, so ARM32 preload libs (glibc32Dir) are not needed here.
-        // If box86 were used as a separate process, it would need its own LD_PRELOAD via its
-        // own env, but in this GLIBC path we only launch box64 directly.
-        File glibc64Dir = imageFs.getGlibc64Dir();
-        File sysvshm64 = new File(glibc64Dir, "libandroid-sysvshm.so");
-        File libredirect64 = new File(glibc64Dir, "libredirect.so");
-
-        if (sysvshm64.exists() || libredirect64.exists()) {
-            StringBuilder ldPreload = new StringBuilder();
-            if (libredirect64.exists()) ldPreload.append(libredirect64.getPath());
-            if (sysvshm64.exists()) {
-                if (ldPreload.length() > 0) ldPreload.append(" ");
-                ldPreload.append(sysvshm64.getPath());
-            }
-            Log.d("GlibcProgramLauncherComponent", "Setting LD_PRELOAD=" + ldPreload);
-            envVars.put("LD_PRELOAD", ldPreload.toString());
-        } else {
-            Log.w("GlibcProgramLauncherComponent", "Neither libredirect.so nor libandroid-sysvshm.so found in " + glibc64Dir.getPath());
-        }
+        putPreloadEnv(envVars, imageFs);
         envVars.put("WINEESYNC_WINLATOR", "1");
         if (this.envVars != null) envVars.putAll(this.envVars);
 
@@ -310,24 +331,7 @@ public class GlibcProgramLauncherComponent extends GuestProgramLauncherComponent
         envVars.put("ANDROID_SYSVSHM_SERVER", imageFs.getRootDir().getPath() + UnixSocketConfig.SYSVSHM_SERVER_PATH);
         envVars.put("FONTCONFIG_PATH", imageFs.getRootDir().getPath() + "/usr/etc/fonts");
 
-        // LD_PRELOAD targets the native ARM64 linker (see execGuestProgram for full explanation).
-        // Only 64-bit ARM libs are relevant since box64 is the native process.
-        File glibc64Dir = imageFs.getGlibc64Dir();
-        File sysvshm64 = new File(glibc64Dir, "libandroid-sysvshm.so");
-        File libredirect64 = new File(glibc64Dir, "libredirect.so");
-
-        if (sysvshm64.exists() || libredirect64.exists()) {
-            StringBuilder ldPreload = new StringBuilder();
-            if (libredirect64.exists()) ldPreload.append(libredirect64.getPath());
-            if (sysvshm64.exists()) {
-                if (ldPreload.length() > 0) ldPreload.append(" ");
-                ldPreload.append(sysvshm64.getPath());
-            }
-            Log.d("GlibcProgramLauncherComponent", "Shell LD_PRELOAD=" + ldPreload);
-            envVars.put("LD_PRELOAD", ldPreload.toString());
-        } else {
-            Log.w("GlibcProgramLauncherComponent", "Shell: neither libredirect.so nor libandroid-sysvshm.so found in " + glibc64Dir.getPath());
-        }
+        putPreloadEnv(envVars, imageFs);
         envVars.put("WINEESYNC_WINLATOR", "1");
         if (this.envVars != null) envVars.putAll(this.envVars);
 
