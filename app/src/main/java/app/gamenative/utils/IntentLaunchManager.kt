@@ -118,11 +118,12 @@ object IntentLaunchManager {
 
     fun getEffectiveContainerConfig(context: Context, appId: String): ContainerData? {
         return try {
-            val baseConfig = if (ContainerUtils.hasContainer(context, appId)) {
+            val baseConfig: ContainerData? = if (ContainerUtils.hasContainer(context, appId)) {
                 val container = ContainerUtils.getContainer(context, appId)
                 ContainerUtils.toContainerData(container)
             } else {
-                null
+                // no container yet: overlay onto the app's defaults
+                ContainerUtils.getDefaultContainerData().copy(drives = Container.DEFAULT_DRIVES)
             }
 
             val override = TemporaryConfigStore.getOverride(appId)
