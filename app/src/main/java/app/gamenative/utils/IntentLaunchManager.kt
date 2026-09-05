@@ -28,6 +28,8 @@ object IntentLaunchManager {
     private const val ACTION_VIEW = "android.intent.action.VIEW"
     private const val URI_SCHEME = "gamenative"
     private const val URI_HOST = "run"
+    private const val EXTRA_FOLDER = "folder"
+    val ACTION_ADD_CUSTOM_GAME_FOLDER = "${BuildConfig.APPLICATION_ID}.ADD_CUSTOM_GAME_FOLDER"
     private const val MAX_CONFIG_JSON_SIZE = 50000 // 50KB limit to prevent memory exhaustion
 
     data class LaunchRequest(
@@ -86,6 +88,26 @@ object IntentLaunchManager {
         Timber.d("[IntentLaunchManager]: Converted to appId: $appId")
 
         return LaunchRequest(appId, containerConfig)
+    }
+
+    fun addCustomGameFolder(context: Context, intent: Intent): Boolean {
+        val folder = intent.getStringExtra(EXTRA_FOLDER)?.trim()
+        if (folder.isNullOrEmpty()) {
+            Timber.w("[IntentLaunchManager]: Missing '$EXTRA_FOLDER' extra in $ACTION_ADD_CUSTOM_GAME_FOLDER intent")
+            return false
+        }
+
+        if (!CustomGameScanner.hasStoragePermission(context, folder)) {
+            Timber.w("[IntentLaunchManager]: Missing storage permission to read custom game folder $folder")
+            return false
+        }
+
+        return try {
+            CustomGameScanner.registerManualFolder(folder)
+        } catch (e: Exception) {
+            Timber.e(e, "[IntentLaunchManager]: Failed to register custom game folder $folder")
+            false
+        }
     }
 
     fun applyTemporaryConfigOverride(context: Context, appId: String, configOverride: ContainerData) {
