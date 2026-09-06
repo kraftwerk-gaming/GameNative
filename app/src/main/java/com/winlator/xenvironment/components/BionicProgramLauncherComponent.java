@@ -93,7 +93,14 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
             }
             return null;
         }
-        return imageFs.getLibDir() + "/" + BuildConfig.PRELOAD_BIONIC_SO;
+        // A build that ships no bionic shim (strom's) runs the container the
+        // way "disable libredirect" does; naming a file the linker cannot
+        // find would fail every exec with CANNOT LINK EXECUTABLE instead.
+        // The bionic imagefs needs no path rewrite to reach the display:
+        // libxcb builds the X socket from TMPDIR, fontconfig and Vulkan read
+        // their dirs from the environment set above.
+        String shim = imageFs.getLibDir() + "/" + BuildConfig.PRELOAD_BIONIC_SO;
+        return new File(shim).exists() ? shim : null;
     }
 
     /** Numeric Steam appid for the game in this container (e.g. "221380").
