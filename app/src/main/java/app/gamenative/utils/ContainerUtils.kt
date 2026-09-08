@@ -1026,9 +1026,20 @@ object ContainerUtils {
             createNewContainer(context, appId, appId, containerManager)
         }
 
-        // Ensure Custom Games have the A: drive mapped to the game folder
-        // and GOG games have a drive mapped to the GOG games directory
-        // and Epic games have a drive mapped to the Epic game directory
+        return ensureGameDrive(context, appId, container)
+    }
+
+    /**
+     * Ensure Custom Games have the A: drive mapped to the game folder
+     * and GOG games have a drive mapped to the GOG games directory
+     * and Epic games have a drive mapped to the Epic game directory.
+     *
+     * Every path that yields a container for a launch must go through here:
+     * the executable check and the launch itself resolve the game folder
+     * from the A: drive, so a container without it fails as "no executable
+     * found" however correct its executablePath is.
+     */
+    private fun ensureGameDrive(context: Context, appId: String, container: Container): Container {
         val gameSource = extractGameSourceFromContainerId(appId)
         val gameFolderPath: String? = when (gameSource) {
             GameSource.STEAM -> {
@@ -1114,7 +1125,10 @@ object ContainerUtils {
         val containerManager = ContainerManager(context)
 
         return if (containerManager.hasContainer(appId)) {
-            val container = containerManager.getContainerById(appId)
+            // Before the override: the drive mapping is persistent state
+            // and saves the container, which must not carry the in-memory
+            // override to disk.
+            val container = ensureGameDrive(context, appId, containerManager.getContainerById(appId))
 
             // Apply temporary override if present (without saving to disk)
             if (IntentLaunchManager.hasTemporaryOverride(appId)) {
@@ -1144,7 +1158,7 @@ object ContainerUtils {
                 null
             }
 
-            createNewContainer(context, appId, appId, containerManager, overrideConfig)
+            ensureGameDrive(context, appId, createNewContainer(context, appId, appId, containerManager, overrideConfig))
         }
     }
 
