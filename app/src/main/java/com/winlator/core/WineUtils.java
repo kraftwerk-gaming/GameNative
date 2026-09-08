@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Locale;
 
 import app.gamenative.PrefManager;
+import app.gamenative.utils.ContainerUtils;
 import timber.log.Timber;
 
 public abstract class WineUtils {
@@ -75,14 +76,41 @@ public abstract class WineUtils {
 
         // Tell Wine what the mapped drives are. Its mountmgr types a letter
         // with no entry under HKLM\Software\Wine\Drives by position: A: and
-        // B: are floppies, so a game on A: sees itself on DRIVE_REMOVABLE.
-        // NFS Underground 2 answers that with "Please insert Disc 2" before
-        // drawing a frame; on a hard disk it runs.
+        // B: are floppies, so a game on A: would see itself on
+        // DRIVE_REMOVABLE, which disc checks and installers act on.
         File systemRegFile = new File(container.getRootDir(), ".wine/system.reg");
         if (systemRegFile.isFile()) {
             try (WineRegistryEditor registryEditor = new WineRegistryEditor(systemRegFile)) {
                 for (String[] drive : container.drivesIterator()) {
                     registryEditor.setStringValue("Software\\Wine\\Drives", drive[0].toLowerCase(Locale.ENGLISH) + ":", "hd");
+                }
+            }
+        }
+
+        // The global builtin-first order for the input DLLs (applySystemTweaks)
+        // keeps winhandler's pad path in charge, but it also silences a
+        // dinput8.dll or dinput.dll shipped next to the game, and that file
+        // is how mod loaders (Ultimate ASI Loader) get in: on a desktop Wine
+        // loads it, and everything the game folder's SCRIPTS carry loads
+        // with it. Measured with NFS Underground 2: with its dinput8.dll
+        // skipped, no mod loads and its disc check fires ("Please insert
+        // Disc 2"); with it loaded the game runs, on both platforms. So
+        // when the game ships one, let it win for that executable only.
+        // The loader chains to the builtin DLL, so the pad still works.
+        String exe = container.getExecutablePath();
+        String aDrive = ContainerUtils.INSTANCE.getADrivePath(container.getDrives());
+        if (exe != null && !exe.isEmpty() && aDrive != null) {
+            String exeName = new File(exe.replace('\\', '/')).getName();
+            File userRegFile = new File(container.getRootDir(), ".wine/user.reg");
+            if (!exeName.isEmpty() && userRegFile.isFile()) {
+                try (WineRegistryEditor registryEditor = new WineRegistryEditor(userRegFile)) {
+                    String key = "Software\\Wine\\AppDefaults\\" + exeName + "\\DllOverrides";
+                    for (String name : new String[]{"dinput", "dinput8"}) {
+                        if (new File(aDrive, name + ".dll").isFile()) {
+                            registryEditor.setStringValue(key, name, "native,builtin");
+                            Log.d("WineUtils", exeName + ": " + name + " native first, the game ships it");
+                        }
+                    }
                 }
             }
         }
