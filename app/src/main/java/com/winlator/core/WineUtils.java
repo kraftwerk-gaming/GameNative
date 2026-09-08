@@ -73,6 +73,20 @@ public abstract class WineUtils {
             }
         }
 
+        // Tell Wine what the mapped drives are. Its mountmgr types a letter
+        // with no entry under HKLM\Software\Wine\Drives by position: A: and
+        // B: are floppies, so a game on A: sees itself on DRIVE_REMOVABLE.
+        // NFS Underground 2 answers that with "Please insert Disc 2" before
+        // drawing a frame; on a hard disk it runs.
+        File systemRegFile = new File(container.getRootDir(), ".wine/system.reg");
+        if (systemRegFile.isFile()) {
+            try (WineRegistryEditor registryEditor = new WineRegistryEditor(systemRegFile)) {
+                for (String[] drive : container.drivesIterator()) {
+                    registryEditor.setStringValue("Software\\Wine\\Drives", drive[0].toLowerCase(Locale.ENGLISH) + ":", "hd");
+                }
+            }
+        }
+
         // Create Steam symlink if we found the game directory
         if (gameDirectoryPath != null) {
             // Extract game name from path like "/data/data/app.gamenative/Steam/steamapps/common/GameName"
